@@ -122,11 +122,6 @@
         return;
       }
 
-      if (file.size > 5 * 1024 * 1024) {
-        alert("File is too large. Max size is 5MB.");
-        return;
-      }
-
       const formData = new FormData();
       formData.append("file", file);
 
