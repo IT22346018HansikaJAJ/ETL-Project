@@ -194,14 +194,10 @@
         });
     }
 
+    // ✅ Removed file size restriction here
     function handleFileUpload(file) {
       if (!file.name.endsWith('.csv')) {
         alert("Only CSV files are allowed.");
-        return;
-      }
-
-      if (file.size > 5 * 1024 * 1024) {
-        alert("File is too large. Max size is 5MB.");
         return;
       }
 
