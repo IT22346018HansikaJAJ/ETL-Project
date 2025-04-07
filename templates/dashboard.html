@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ETL Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body[data-theme='dark'] {
+      background-color: #2a2d3f;
+      color: #e0e0e0;
+    }
+    body[data-theme='light'], body:not([data-theme]) {
+      background-color: #dcd2e8;
+      color: #352e47;
+    }
+
+    .container {
+      background-color: inherit;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .drop-zone {
+      border: 2px dashed #bbb;
+      padding: 30px;
+      text-align: center;
+      border-radius: 8px;
+      cursor: pointer;
+      background-color: rgba(255,255,255,0.05);
+      transition: all 0.3s ease;
+    }
+
+    .drop-zone.dragover {
+      border-color: #9a79d1;
+      background-color: rgba(154,121,209,0.1);
+    }
+
+    .table, .list-group-item {
+      color: inherit;
+    }
+
+    body[data-theme='dark'] .bg-light,
+    body[data-theme='dark'] pre,
+    body[data-theme='dark'] input.form-control,
+    body[data-theme='dark'] .list-group-item {
+      color: #212529 !important;
+      background-color: #f8f9fa !important;
+    }
+
+    body[data-theme='dark'] pre {
+      border: 1px solid #ced4da;
+    }
+
+    .top-controls {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      text-align: right;
+    }
+
+    .btn {
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .btn-outline-secondary {
+      border-color: #805ad5;
+      color: #805ad5;
+    }
+
+    .btn-outline-secondary:hover {
+      background-color: #805ad5;
+      color: white;
+      box-shadow: 0 2px 10px rgba(128, 90, 213, 0.5);
+    }
+
+    .btn-outline-danger {
+      border-color: #e06666;
+      color: #e06666;
+    }
+
+    .btn-outline-danger:hover {
+      background-color: #e06666;
+      color: white;
+      box-shadow: 0 2px 10px rgba(224, 102, 102, 0.5);
+    }
+
+    .btn-primary {
+      background-color: #805ad5;
+      border-color: #805ad5;
+    }
+
+    .btn-primary:hover {
+      background-color: #6f42c1;
+      border-color: #6f42c1;
+      box-shadow: 0 2px 10px rgba(111, 66, 193, 0.5);
+    }
+
+    .btn-success {
+      background-color: #5cb85c;
+      border-color: #5cb85c;
+    }
+
+    .btn-success:hover {
+      background-color: #4cae4c;
+      border-color: #4cae4c;
+      box-shadow: 0 2px 10px rgba(92, 184, 92, 0.5);
+    }
+
+    .btn-danger {
+      background-color: #d9534f;
+      border-color: #d9534f;
+    }
+
+    .btn-danger:hover {
+      background-color: #c9302c;
+      border-color: #c9302c;
+      box-shadow: 0 2px 10px rgba(217, 83, 79, 0.5);
+    }
+
+    .text-muted {
+      color: #b0b0b0 !important;
+    }
+
+    body[data-theme='light'] .text-muted {
+      color: #212529 !important;
+    }
+  </style>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const savedTheme = localStorage.getItem("theme") || "light";
+      document.body.setAttribute("data-theme", savedTheme);
+    });
+
+    function toggleTheme() {
+      const currentTheme = document.body.getAttribute('data-theme') || 'light';
+      const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.body.setAttribute('data-theme', nextTheme);
+      localStorage.setItem("theme", nextTheme);
+    }
+
+    function deleteFile(filename) {
+      fetch(`/delete/${filename}`, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            alert("Deleted successfully!");
+            location.reload();
+          } else {
+            alert("Failed to delete: " + data.error);
+          }
+        });
+    }
+
+    function previewFile(filename) {
+      fetch(`/preview/${filename}`)
+        .then(res => res.json())
+        .then(data => {
+          const previewDiv = document.getElementById("preview");
+          if (!data || data.length === 0) {
+            previewDiv.innerHTML = "<p class='text-muted'>No preview data available.</p>";
+            return;
+          }
+
+          let html = `<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead><tr>`;
+          Object.keys(data[0]).forEach(col => {
+            html += `<th class="bg-secondary text-white">${col}</th>`;
+          });
+          html += "</tr></thead><tbody>";
+
+          data.forEach(row => {
+            html += "<tr>";
+            Object.values(row).forEach(val => {
+              html += `<td>${val ?? ''}</td>`;
+            });
+            html += "</tr>";
+          });
+
+          html += "</tbody></table></div>";
+          previewDiv.innerHTML = html;
+        });
+    }
+
+    function clearLog() {
+      fetch('/clear-log', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            alert("Upload log cleared!");
+            location.reload();
+          } else {
+            alert("Failed to clear log: " + data.error);
+          }
+        });
+    }
+
+    function handleFileUpload(file) {
+      if (!file.name.endsWith('.csv')) {
+        alert("Only CSV files are allowed.");
+        return;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        alert("File is too large. Max size is 5MB.");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      fetch("/upload", {
+        method: "POST",
+        body: formData
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            alert("Error: " + data.error);
+          } else {
+            alert("File uploaded and cleaned successfully!");
+            location.reload();
+          }
+        });
+    }
+
+    function handleDropZoneEvents() {
+      const dropZone = document.getElementById('drop-zone');
+
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+      });
+
+      dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        handleFileUpload(file);
+      });
+
+      document.getElementById('csvFile').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) handleFileUpload(file);
+      });
+    }
+
+    window.onload = handleDropZoneEvents;
+  </script>
+</head>
+<body class="py-4">
+  <div class="top-controls">
+    <a class="btn btn-outline-danger btn-sm me-2" href="/logout">🔓 Logout</a>
+    <button onclick="toggleTheme()" class="btn btn-outline-secondary btn-sm">🌓 Toggle Theme</button>
+    <div class="text-muted mt-2">👤 Logged in as <strong>admin</strong></div>
+  </div>
+
+  <div class="container">
+    <div class="text-center mb-4">
+      <h1 class="mb-1">📊 ETL Dashboard</h1>
+    </div>
+
+    <!-- Upload Section -->
+    <div class="mb-5">
+      <h2>📤 Upload CSV</h2>
+      <div id="drop-zone" class="drop-zone mb-3">
+        Drag & Drop CSV Here or Click Below
+      </div>
+      <input type="file" class="form-control" id="csvFile" accept=".csv">
+    </div>
+
+    <!-- File List -->
+    <div class="mb-5">
+      <h2>📂 Cleaned Files</h2>
+      {% if cleaned_files %}
+      <ul class="list-group">
+        {% for file in cleaned_files %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          {{ file }}
+          <div>
+            <a class="btn btn-sm btn-success me-2" href="/download/{{ file }}">⬇️ Download</a>
+            <button class="btn btn-sm btn-primary me-2" onclick="previewFile('{{ file }}')">👁️ Preview</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteFile('{{ file }}')">🗑️ Delete</button>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p>No cleaned files found.</p>
+      {% endif %}
+    </div>
+
+    <!-- Upload Log -->
+    <div class="mb-5">
+      <h2>📝 Upload Log</h2>
+      <button class="btn btn-sm btn-outline-danger mb-2" onclick="clearLog()">🧹 Clear Upload Log</button>
+      {% if log %}
+      <pre class="bg-light border p-3">{{ log }}</pre>
+      {% else %}
+      <p>No uploads yet.</p>
+      {% endif %}
+    </div>
+
+    <!-- Preview Section -->
+    <div id="preview" class="mb-5"></div>
+
+    <!-- Back Button -->
+    <a class="btn btn-outline-secondary" href="/">⬅️ Back to Upload Page</a>
+  </div>
+</body>
+</html>
