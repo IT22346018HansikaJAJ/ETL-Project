@@ -1,4 +1,3 @@
-# app.py
 from flask import Flask, request, jsonify, render_template, send_from_directory, session, redirect, url_for
 import pandas as pd
 from flask_cors import CORS
@@ -17,9 +16,6 @@ app.secret_key = 'super_secret_key_123'  # 🔐 Change this in production
 UPLOAD_FOLDER = 'uploads'
 CLEANED_FOLDER = 'cleaned'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-# ✅ Limit upload file size to 5MB
-app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB limit
 
 # Ensure folders exist
 for folder in [UPLOAD_FOLDER, CLEANED_FOLDER]:
@@ -105,8 +101,8 @@ def upload_csv():
 
         # Transform
         df.drop_duplicates(inplace=True)
-        df.dropna(how='any', inplace=True)  # ✅ Remove rows with any missing values
-        df.dropna(axis=1, how='all', inplace=True)  # Drop completely empty columns
+        df.dropna(how='any', inplace=True)
+        df.dropna(axis=1, how='all', inplace=True)
         df.columns = [col.strip().lower().replace(" ", "_") for col in df.columns]
         for col in df.select_dtypes(include=['object']):
             df[col] = df[col].str.strip()
