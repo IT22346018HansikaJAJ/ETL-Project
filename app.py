@@ -158,6 +158,16 @@ def upload_history():
         rows = c.fetchall()
     return render_template("upload_history.html", history=rows)
 
+@app.route('/api/upload-history')
+def upload_history_api():
+    if 'user' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    with sqlite3.connect("upload_history.db") as conn:
+        c = conn.cursor()
+        c.execute("SELECT filename, status, timestamp FROM uploads WHERE username = ? ORDER BY timestamp DESC", (session['user'],))
+        rows = c.fetchall()
+    return jsonify(rows)
+
 @app.route('/clear-log', methods=['POST'])
 def clear_log():
     if 'user' not in session:
