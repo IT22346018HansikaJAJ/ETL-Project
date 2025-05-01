@@ -5,32 +5,48 @@ import os
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import traceback
+import sqlite3
 
 app = Flask(__name__)
 CORS(app)
 
-# Secret key for sessions
-app.secret_key = 'super_secret_key_123'  # 🔐 Change this in production
+app.secret_key = 'super_secret_key_123'
 
-# Folder configs
 UPLOAD_FOLDER = 'uploads'
 CLEANED_FOLDER = 'cleaned'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Ensure folders exist
 for folder in [UPLOAD_FOLDER, CLEANED_FOLDER]:
     if not os.path.exists(folder):
         os.makedirs(folder)
 
-# Dummy credentials
 USER_CREDENTIALS = {
     'admin': 'password123'
 }
 
-# Upload log function
-def log_upload(filename):
-    with open("upload_log.txt", "a") as log_file:
-        log_file.write(f"{datetime.now().isoformat()} - Uploaded: {filename}\n")
+# --- DB INIT ---
+def init_db():
+    with sqlite3.connect("upload_history.db") as conn:
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS uploads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                filename TEXT,
+                status TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+init_db()
+
+# --- DB Logger ---
+def log_upload_db(username, filename, status):
+    with sqlite3.connect("upload_history.db") as conn:
+        c = conn.cursor()
+        c.execute("INSERT INTO uploads (username, filename, status) VALUES (?, ?, ?)",
+                  (username, filename, status))
+        conn.commit()
 
 @app.route('/')
 def home():
@@ -81,29 +97,34 @@ def upload_csv():
             save_path = os.path.join(UPLOAD_FOLDER, filename)
             counter += 1
 
-        # Save original uploaded file
         file.save(save_path)
 
-        # Log the upload
-        log_upload(filename)
-
-        # Extract with fallback delimiter + auto-detect
+        # Read CSV
         try:
             df = pd.read_csv(save_path)
             if len(df.columns) == 1 and '|' in df.columns[0]:
                 df = pd.read_csv(save_path, delimiter='|')
-        except Exception:
-            return jsonify({'error': 'Failed to parse CSV. Please check the file format.'}), 400
+        except Exception as e:
+            log_upload_db(session['user'], filename, 'parse_error')
+            return jsonify({'error': f'CSV parsing failed: {str(e)}'}), 400
 
-        # ✅ Check for empty CSV
+        # Validate structure
         if df.empty:
+            log_upload_db(session['user'], filename, 'empty')
             return jsonify({'error': 'Uploaded CSV is empty.'}), 400
+        if len(df.columns) < 2:
+            log_upload_db(session['user'], filename, 'invalid_structure')
+            return jsonify({'error': 'CSV must contain at least two columns.'}), 400
+        if all(not str(col).strip() for col in df.columns):
+            log_upload_db(session['user'], filename, 'no_headers')
+            return jsonify({'error': 'Column headers are missing or blank.'}), 400
 
         # Transform
         df.drop_duplicates(inplace=True)
         df.dropna(how='any', inplace=True)
         df.dropna(axis=1, how='all', inplace=True)
         df.columns = [col.strip().lower().replace(" ", "_") for col in df.columns]
+
         for col in df.select_dtypes(include=['object']):
             df[col] = df[col].str.strip()
         for col in df.columns:
@@ -113,23 +134,29 @@ def upload_csv():
                 except:
                     pass
         for col in df.select_dtypes(include=['float', 'int']):
-            try:
-                df[col].fillna(0, inplace=True)
-            except:
-                pass
+            df[col].fillna(0, inplace=True)
 
-        # Save cleaned version
         cleaned_filename = f"cleaned_{filename}"
         cleaned_path = os.path.join(CLEANED_FOLDER, cleaned_filename)
         df.to_csv(cleaned_path, index=False)
 
-        # Load
-        data = df.to_dict(orient='records')
-        return jsonify({'data': data})
+        log_upload_db(session['user'], filename, 'success')
+        return jsonify({'data': df.to_dict(orient='records')})
 
     except Exception as e:
         print("ERROR:", traceback.format_exc())
-        return jsonify({'error': 'Something went wrong while processing the file. Please try again.'}), 500
+        log_upload_db(session['user'], filename, 'server_error')
+        return jsonify({'error': 'Something went wrong while processing the file.'}), 500
+
+@app.route('/upload-history')
+def upload_history():
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    with sqlite3.connect("upload_history.db") as conn:
+        c = conn.cursor()
+        c.execute("SELECT filename, status, timestamp FROM uploads WHERE username = ? ORDER BY timestamp DESC", (session['user'],))
+        rows = c.fetchall()
+    return render_template("upload_history.html", history=rows)
 
 @app.route('/clear-log', methods=['POST'])
 def clear_log():
@@ -140,23 +167,6 @@ def clear_log():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/log')
-def view_log():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-
-    if not os.path.exists("upload_log.txt"):
-        return "<h2>No uploads yet</h2>"
-
-    with open("upload_log.txt", "r") as f:
-        lines = f.readlines()
-
-    html = "<h2>Upload Log</h2><ul>"
-    for line in lines:
-        html += f"<li>{line.strip()}</li>"
-    html += "</ul>"
-    return html
 
 @app.route('/download/<filename>')
 def download_cleaned_file(filename):
@@ -199,7 +209,6 @@ def dashboard():
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r") as f:
             log = f.read()
-
     return render_template("dashboard.html", cleaned_files=cleaned_files, log=log)
 
 if __name__ == '__main__':

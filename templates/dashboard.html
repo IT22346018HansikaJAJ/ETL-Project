@@ -139,15 +139,26 @@
       localStorage.setItem("theme", nextTheme);
     }
 
+    function showAlert(message, type = 'info') {
+      const alertBox = document.getElementById("alertBox");
+      alertBox.className = `alert alert-${type}`;
+      alertBox.innerHTML = message;
+      alertBox.classList.remove('d-none');
+
+      setTimeout(() => {
+        alertBox.classList.add('d-none');
+      }, 5000);
+    }
+
     function deleteFile(filename) {
       fetch(`/delete/${filename}`, { method: 'DELETE' })
         .then(res => res.json())
         .then(data => {
           if (data.success) {
-            alert("Deleted successfully!");
+            showAlert("🗑️ File deleted successfully.", "success");
             location.reload();
           } else {
-            alert("Failed to delete: " + data.error);
+            showAlert("❌ Delete failed: " + data.error, "danger");
           }
         });
     }
@@ -186,18 +197,17 @@
         .then(res => res.json())
         .then(data => {
           if (data.success) {
-            alert("Upload log cleared!");
+            showAlert("🧹 Upload log cleared!", "info");
             location.reload();
           } else {
-            alert("Failed to clear log: " + data.error);
+            showAlert("❌ Failed to clear log: " + data.error, "danger");
           }
         });
     }
 
-    // ✅ Removed file size restriction here
     function handleFileUpload(file) {
       if (!file.name.endsWith('.csv')) {
-        alert("Only CSV files are allowed.");
+        showAlert("❌ Only CSV files are allowed.", "danger");
         return;
       }
 
@@ -211,9 +221,9 @@
         .then(res => res.json())
         .then(data => {
           if (data.error) {
-            alert("Error: " + data.error);
+            showAlert("❌ " + data.error, "danger");
           } else {
-            alert("File uploaded and cleaned successfully!");
+            showAlert("✅ File uploaded and cleaned successfully!", "success");
             location.reload();
           }
         });
@@ -254,7 +264,10 @@
     <div class="text-muted mt-2">👤 Logged in as <strong>admin</strong></div>
   </div>
 
-  <div class="container">
+  <!-- Alert Box -->
+  <div id="alertBox" class="alert d-none text-center mx-4" role="alert"></div>
+
+  <div class="container mt-4">
     <div class="text-center mb-4">
       <h1 class="mb-1">📊 ETL Dashboard</h1>
     </div>
